@@ -16,7 +16,7 @@ DigitalOut myled2(LED2);
 DigitalOut right_motor_backward(PTB0);
 DigitalOut right_motor_forward(PTB1); 
 DigitalOut left_motor_backward(PTC2); 
-DigitalOut left_motor_forward(PTC17); 
+DigitalOut left_motor_forward(PTC1); 
 
 //Encoder; 20 furos no disco
 //Cada volta completa dá 20 pulsos (um pulso por furo)(pulso: 0->1)
@@ -48,38 +48,43 @@ void setMotor(float left_forward, float left_backward, float right_forward, floa
 void move_forward(int dist_cm){
     int pulses = floor(dist_cm/(1/dist_pulse));
     reset_pulses();
+    setMotor(1, 0, 1, 0);
     while (right_pulses <= pulses || left_pulses <= pulses) {
-        setMotor(0, 1, 0, 1);
+        pc.printf("Pulsos: %d", pulses);
+        pc.printf("Encoder direita: %d", right_pulses);
+        pc.printf("\r\n");
+        pc.printf("Encoder esquerda: %d", left_pulses);
+        pc.printf("\r\n");
     }
+    setMotor(0, 0, 0, 0);
     reset_pulses();
 }
 
 void move_left() { //90 graus
-    float dist_roda = 21.206;
-    float arch = floor(((90/360) * 2 * pi * dist_roda)*1.65);
+    int pulses = 18; // 18 pulsos para 90 graus
     reset_pulses();
-    while (left_pulses <= arch) {
-        pc.printf("Arco: %d", arch);
+    setMotor(0, 1, 1, 0);
+    while (left_pulses < pulses) {
+        pc.printf("Arco: %d", pulses);
         pc.printf("Encoder direita: %d", right_pulses);
         pc.printf("\r\n");
         pc.printf("Encoder esquerda: %d", left_pulses);
         pc.printf("\r\n");
-        setMotor(0, 1, 1, 0);
     }
+    setMotor(0, 0, 0, 0);
     reset_pulses();
 }
 
 void move_right() { //90 graus
-    float dist_roda = 21.206;
-    float arch = floor(((90/360) * 2 * pi * dist_roda)*1.65);
+    int pulses = 18; // 18 pulsos para 90 graus
     reset_pulses();
-    while (right_pulses <= arch) {
-        pc.printf("Arco: %f", arch);
+    setMotor(1, 0, 0, 1);
+    while (right_pulses < pulses) {
+        pc.printf("Arco: %d", pulses);
         pc.printf("Encoder direita: %d", right_pulses);
         pc.printf("\r\n");
         pc.printf("Encoder esquerda: %d", left_pulses);
         pc.printf("\r\n");
-        setMotor(1, 0, 0, 1);
     }
     setMotor(0, 0, 0, 0);
     reset_pulses();
@@ -88,7 +93,7 @@ void move_right() { //90 graus
 // main() runs in its own thread in the OS
 int main()
 {
-    #define TRANSFER_SIZE   5 //originalmente 4
+    #define TRANSFER_SIZE   4 //originalmente 4
 
     encoder_right.fall(&count_right);
     encoder_left.fall(&count_left);
@@ -108,7 +113,7 @@ int main()
 
     pc.printf( "Type keys to test transfers:\r\n  (transfers are grouped into %d characters)\r\n", TRANSFER_SIZE );
 
-    my_nrf24l01p.setTransferSize( TRANSFER_SIZE );
+    my_nrf24l01p.setTransferSize( TRANSFER_SIZE, TRANSFER_SIZE );
 
     my_nrf24l01p.setReceiveMode();
     my_nrf24l01p.enable();
@@ -151,7 +156,7 @@ int main()
                 move_left();
             } else if (rxData[0] == 'd') {
                 move_right();
-            } else if (rxData[0] == 'a') {
+            } else if (rxData[0] == 'f') {
                 move_forward((rxData[1] - '0'));
             }
 
