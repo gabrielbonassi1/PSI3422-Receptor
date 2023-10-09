@@ -1,9 +1,12 @@
+#include "DigitalOut.h"
+#include "PinNames.h"
 #include "mbed.h"
 #include <math.h>
+#include "mbed_wait_api.h"
 #include "nRF24L01P.h"
 #include "HCSR04.h"
 
-float lista[4] = {0.06f, 0.06f, 0.06f, 0.06f};
+float list[4] = {0.06f, 0.06f, 0.06f, 0.06f};
 
 Serial pc(USBTX, USBRX);
 
@@ -17,6 +20,12 @@ DigitalOut right_motor_backward(PTB0);
 DigitalOut right_motor_forward(PTB1); 
 DigitalOut left_motor_backward(PTC2); 
 DigitalOut left_motor_forward(PTC1); 
+
+//HCSR04
+DigitalOut echo(PTA4);
+DigitalOut trigger(PTA5);
+HCSR04 sonar(PTA5, PTA4);
+float dist;
 
 //Encoder; 20 furos no disco
 //Cada volta completa dá 20 pulsos (um pulso por furo)(pulso: 0->1)
@@ -50,7 +59,10 @@ void move_forward(int dist_cm){
     reset_pulses();
     setMotor(1, 0, 1, 0);
     while (right_pulses <= pulses || left_pulses <= pulses) {
+        pc.printf("Andando %d cm pra frente", dist_cm);
+        pc.printf("\r\n");
         pc.printf("Pulsos: %d", pulses);
+        pc.printf("\r\n");
         pc.printf("Encoder direita: %d", right_pulses);
         pc.printf("\r\n");
         pc.printf("Encoder esquerda: %d", left_pulses);
@@ -65,7 +77,10 @@ void move_left() { //90 graus
     reset_pulses();
     setMotor(0, 1, 1, 0);
     while (left_pulses < pulses) {
+        pc.printf("Virando pra esquerda");
+        pc.printf("\r\n");
         pc.printf("Arco: %d", pulses);
+        pc.printf("\r\n");
         pc.printf("Encoder direita: %d", right_pulses);
         pc.printf("\r\n");
         pc.printf("Encoder esquerda: %d", left_pulses);
@@ -80,7 +95,10 @@ void move_right() { //90 graus
     reset_pulses();
     setMotor(1, 0, 0, 1);
     while (right_pulses < pulses) {
+        pc.printf("Virando pra direita");
+        pc.printf("\r\n");
         pc.printf("Arco: %d", pulses);
+        pc.printf("\r\n");
         pc.printf("Encoder direita: %d", right_pulses);
         pc.printf("\r\n");
         pc.printf("Encoder esquerda: %d", left_pulses);
@@ -88,6 +106,55 @@ void move_right() { //90 graus
     }
     setMotor(0, 0, 0, 0);
     reset_pulses();
+}
+
+void move_backwards() { //5cm pra trás
+    int pulses = floor(5/(1/dist_pulse));
+    reset_pulses();
+    setMotor(0, 1, 0, 1);
+    while (right_pulses <= pulses || left_pulses <= pulses) {
+        pc.printf("Andando pra trás");
+        pc.printf("\r\n");
+        pc.printf("Pulsos: %d", pulses);
+        pc.printf("\r\n");
+        pc.printf("Encoder direita: %d", right_pulses);
+        pc.printf("\r\n");
+        pc.printf("Encoder esquerda: %d", left_pulses);
+        pc.printf("\r\n");
+    }
+    setMotor(0, 0, 0, 0);
+    reset_pulses();
+}
+
+void destination(int x, int y, bool positive) {
+    int y_tvl = y; int x_tvl = x;
+    while (y_tvl >= 0) {
+        dist = sonar.distance(CM);
+        if (dist > 10 || dist <= 0) {
+            move_forward(1); //anda de um em um cm
+            y_tvl--;
+        } else {
+            setMotor(0, 0, 0, 0);
+            wait_us(1000000);
+            if (positive) {
+                move_left();
+                wait_us(1000000);
+                move_forward(1);
+                x_tvl--;
+                wait_us(1000000);
+                move_right();
+                wait_us(1000000);
+            } else if (!positive) {
+                move_right();
+                wait_us(1000000);
+                move_forward(1);
+                x_tvl--;
+                wait_us(1000000);
+                move_left();
+                wait_us(1000000);
+            }
+        }
+    }
 }
 
 // main() runs in its own thread in the OS
