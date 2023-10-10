@@ -1,25 +1,21 @@
-#include "DigitalOut.h"
-#include "PinNames.h"
 #include "mbed.h"
 #include <math.h>
 #include "mbed_wait_api.h"
 #include "nRF24L01P.h"
 #include "HCSR04.h"
 
-float list[4] = {0.06f, 0.06f, 0.06f, 0.06f};
-
 Serial pc(USBTX, USBRX);
 
-nRF24L01P my_nrf24l01p(PTD2, PTD3, PTC5, PTD0, PTD5, PTA13);    // mosi, miso, sck, csn, ce, irq
+nRF24L01P my_nrf24l01p(PTD2, PTD3, PTC5, PTD0, PTD5, PTA13);     // mosi, miso, sck, csn, ce, irq
 
-DigitalOut myled1(LED1);
-DigitalOut myled2(LED2);
+DigitalOut myled1(LED_GREEN);
+DigitalOut myled2(LED_RED);
 
 //Motor ponte H
-DigitalOut right_motor_backward(PTB0);
-DigitalOut right_motor_forward(PTB1); 
-DigitalOut left_motor_backward(PTC2); 
-DigitalOut left_motor_forward(PTC1); 
+DigitalOut right_motor_backward(PTE20);
+DigitalOut right_motor_forward(PTE21); 
+DigitalOut left_motor_backward(PTE29); 
+DigitalOut left_motor_forward(PTE31); 
 
 //HCSR04
 DigitalOut echo(PTA4);
@@ -29,8 +25,8 @@ float dist;
 
 //Encoder; 20 furos no disco
 //Cada volta completa dá 20 pulsos (um pulso por furo)(pulso: 0->1)
-InterruptIn encoder_right(PTA5);
-InterruptIn encoder_left(PTA4);
+InterruptIn encoder_right(PTA12);
+InterruptIn encoder_left(PTD4);
 volatile int right_pulses = 0;
 volatile int left_pulses = 0;
 void reset_pulses() {
@@ -128,30 +124,66 @@ void move_backwards() { //5cm pra trás
 
 void destination(int x, int y, bool positive) {
     int y_tvl = y; int x_tvl = x;
-    while (y_tvl >= 0) {
-        dist = sonar.distance(CM);
-        if (dist > 10 || dist <= 0) {
-            move_forward(1); //anda de um em um cm
-            y_tvl--;
-        } else {
-            setMotor(0, 0, 0, 0);
-            wait_us(1000000);
-            if (positive) {
-                move_left();
+    while (y_tvl >= 0 && x_tvl >= 0) {
+        while (y_tvl >= 0) {
+            dist = sonar.distance(CM);
+            if (dist > 10 || dist <= 0) {
+                move_forward(1); //anda de um em um cm
+                y_tvl--;
+            } else {
+                setMotor(0, 0, 0, 0);
                 wait_us(1000000);
-                move_forward(1);
+                if (positive) {
+                    move_left();
+                    wait_us(1000000);
+                    move_forward(1);
+                    x_tvl--;
+                    wait_us(1000000);
+                    move_right();
+                    wait_us(1000000);
+                } else if (!positive) {
+                    move_right();
+                    wait_us(1000000);
+                    move_forward(1);
+                    x_tvl--;
+                    wait_us(1000000);
+                    move_left();
+                    wait_us(1000000);
+                }
+            }
+        }
+        wait_us(1000000);
+        if (positive) {
+            move_right();
+        } else if (!positive) {
+            move_left();
+        }
+        wait_us(1000000);
+        while (x_tvl >= 0) {
+            dist = sonar.distance(CM);
+            if (dist > 10 || dist <= 0) {
+                move_forward(1); //anda de um em um cm
                 x_tvl--;
+            } else {
+                setMotor(0, 0, 0, 0);
                 wait_us(1000000);
-                move_right();
-                wait_us(1000000);
-            } else if (!positive) {
-                move_right();
-                wait_us(1000000);
-                move_forward(1);
-                x_tvl--;
-                wait_us(1000000);
-                move_left();
-                wait_us(1000000);
+                if (positive) {
+                    move_right();
+                    wait_us(1000000);
+                    move_forward(1);
+                    y_tvl--;
+                    wait_us(1000000);
+                    move_left();
+                    wait_us(1000000);
+                } else if (!positive) {
+                    move_left();
+                    wait_us(1000000);
+                    move_forward(1);
+                    y_tvl--;
+                    wait_us(1000000);
+                    move_right();
+                    wait_us(1000000);
+                }
             }
         }
     }
@@ -160,7 +192,7 @@ void destination(int x, int y, bool positive) {
 // main() runs in its own thread in the OS
 int main()
 {
-    #define TRANSFER_SIZE   4 //originalmente 4
+    #define TRANSFER_SIZE   5 //XX YY Positivo
 
     encoder_right.fall(&count_right);
     encoder_left.fall(&count_left);
@@ -180,7 +212,7 @@ int main()
 
     pc.printf( "Type keys to test transfers:\r\n  (transfers are grouped into %d characters)\r\n", TRANSFER_SIZE );
 
-    my_nrf24l01p.setTransferSize( TRANSFER_SIZE, TRANSFER_SIZE );
+    my_nrf24l01p.setTransferSize(TRANSFER_SIZE, TRANSFER_SIZE);
 
     my_nrf24l01p.setReceiveMode();
     my_nrf24l01p.enable();
@@ -219,13 +251,19 @@ int main()
 
             myled2 = !myled2;
 
-            if (rxData[0] == 'e'){
-                move_left();
-            } else if (rxData[0] == 'd') {
-                move_right();
-            } else if (rxData[0] == 'f') {
-                move_forward((rxData[1] - '0'));
+            int x_coord = 0; int y_coord = 0; bool positive = true;
+            if (rxData[0] > 47 && rxData[0] < 58 && rxData[1] > 47 && rxData[1] < 58) {
+                x_coord = (rxData[0]-48)*10 + (rxData[1]-48);
             }
+            if (rxData[2] > 47 && rxData[2] < 58 && rxData[3] > 47 && rxData[3] < 58) {
+                y_coord = (rxData[3]-48)*10 + (rxData[4]-48);
+            }
+            switch (rxData[4]) {
+                case 'p': positive = true; break;
+                case 'n': positive = false; break;
+            }
+
+            destination(x_coord, y_coord, positive);
 
             /*switch (rxData[0]) {
                 case 'e': //pra esquerda
