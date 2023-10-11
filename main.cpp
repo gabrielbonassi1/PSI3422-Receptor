@@ -4,7 +4,7 @@
 #include <math.h>
 #include "mbed_error.h"
 #include "mbed_wait_api.h"
-#include "HCSR04.h"
+#include "hcsr04.h"
 #include "nRF24L01P.h"
 
 Serial pc(USBTX, USBRX);
@@ -26,7 +26,7 @@ PwmOut left_motor_forward(PTE31);
 DigitalOut echo(PTA4);
 DigitalOut trigger(PTA5);
 HCSR04 sonar(PTA5, PTA4);
-long dist;
+unsigned int dist;
 
 //Encoder; 20 furos no disco
 //Cada volta completa dá 20 pulsos (um pulso por furo)(pulso: 0->1)
@@ -45,21 +45,29 @@ void count_left() {
     left_pulses++;
 }
 const long double pi = atan(1)*4;
-const long double dist_pulse = (2*pi*2*6.8)/20;
+const long double dist_pulse = (2*pi*3.15)/20;
 
 
 void setMotor(float left_forward, float left_backward, float right_forward, float right_backward) {
     right_motor_backward = right_backward;
+    pc.printf("Motor direito pra trás: %f \r\n", right_backward);
     right_motor_forward = right_forward;   
-    left_motor_backward = left_backward;   
-    left_motor_forward = left_forward;   
+    pc.printf("Motor direito pra frente: %f \r\n", right_forward);
+    left_motor_backward = left_backward;
+    pc.printf("Motor esquerdo pra trás: %f \r\n", left_backward);   
+    left_motor_forward = left_forward;
+    pc.printf("Motor esquerdo pra frente: %f \r\n", left_forward);
+    right_motor_backward.period_ms(25);
+    right_motor_forward.period_ms(25);
+    left_motor_backward.period_ms(25);
+    left_motor_forward.period_ms(25);   
 }
 
 void move_forward(int dist_cm){
     int pulses = floor(dist_cm/(1/dist_pulse));
     reset_pulses();
-    setMotor(1, 0, 1, 0);
-    while (right_pulses <= pulses || left_pulses <= pulses) {
+    while (right_pulses <= pulses && left_pulses <= pulses) {
+        setMotor(0, 1, 0, 1);
         pc.printf("Andando %d cm pra frente", dist_cm);
         pc.printf("\r\n");
         pc.printf("Pulsos: %d", pulses);
@@ -74,10 +82,10 @@ void move_forward(int dist_cm){
 }
 
 void move_left() { //90 graus
-    int pulses = 18; // 18 pulsos para 90 graus
+    int pulses = 6; // 8 pulsos para 90 graus
     reset_pulses();
-    setMotor(0, 1, 1, 0);
     while (left_pulses < pulses) {
+        setMotor(1, 0, 0, 1);
         pc.printf("Virando pra esquerda");
         pc.printf("\r\n");
         pc.printf("Arco: %d", pulses);
@@ -92,10 +100,10 @@ void move_left() { //90 graus
 }
 
 void move_right() { //90 graus
-    int pulses = 18; // 18 pulsos para 90 graus
+    int pulses = 6; // 8 pulsos para 90 graus
     reset_pulses();
-    setMotor(1, 0, 0, 1);
-    while (right_pulses < pulses) {
+    while (left_pulses < pulses) {
+        setMotor(0, 1, 1, 0);
         pc.printf("Virando pra direita");
         pc.printf("\r\n");
         pc.printf("Arco: %d", pulses);
@@ -112,7 +120,7 @@ void move_right() { //90 graus
 void move_backwards() { //5cm pra trás
     int pulses = floor(5/(1/dist_pulse));
     reset_pulses();
-    setMotor(0, 1, 0, 1);
+    setMotor(1, 0, 1, 0);
     while (right_pulses <= pulses || left_pulses <= pulses) {
         pc.printf("Andando pra trás");
         pc.printf("\r\n");
@@ -133,8 +141,9 @@ void destination(int x, int y, bool positive) {
         pc.printf("Entrando no loop base \r\n");
         while (y_tvl >= 0) {
             pc.printf("Entrando no loop Y \r\n");
-            dist = sonar.distance(CM);
-            if (dist > 1 || dist <= 0) { //CHECAR SE O CARRINHO DE FATO ANDA SÓ 1CM
+            dist = sonar.get_dist_cm();
+            pc.printf("Distancia: %d", dist);
+            if (dist > 2 || dist <= 0) { //CHECAR SE O CARRINHO DE FATO ANDA SÓ 1CM
                 pc.printf("Andando pra frende 1 cm \r\n");
                 move_forward(1); //anda de um em um cm
                 y_tvl--;
@@ -173,9 +182,9 @@ void destination(int x, int y, bool positive) {
         }
         wait_us(1000000);
         while (x_tvl >= 0) {
-            pc.printf("Entrando no segundo loop");
-            dist = sonar.distance(CM);
-            if (dist > 10 || dist <= 0) {
+            pc.printf("Entrando no loop X");
+            dist = sonar.get_dist_cm();
+            if (dist > 2 || dist <= 0) {
                 pc.printf("Andando pra frente 1 cm");
                 move_forward(1); //anda de um em um cm
                 x_tvl--;
@@ -272,6 +281,8 @@ int main()
                 pc.putc( rxData[i] );
             }
 
+            pc.printf("\r\n");
+
             myled1 = !myled1;
 
             int x_coord = 0; int y_coord = 0; bool positive = true;
@@ -280,7 +291,7 @@ int main()
                 pc.printf("Coordenada X: %d \r\n", x_coord);
             }
             if (rxData[2] > 47 && rxData[2] < 58 && rxData[3] > 47 && rxData[3] < 58) {
-                y_coord = (rxData[3]-48)*10 + (rxData[4]-48);
+                y_coord = (rxData[2]-48)*10 + (rxData[3]-48);
                 pc.printf("Coordenada Y: %d \r\n", y_coord);
             }
             switch (rxData[4]) {
@@ -288,7 +299,11 @@ int main()
                 case 'n': positive = false; break;
             }
             pc.printf("Positivo: %d \r\n", positive);
-
+            /*move_forward(10);
+            wait_us(1000000);
+            move_left();
+            wait_us(1000000);
+            move_right();*/
             destination(x_coord, y_coord, positive);
 
             /*switch (rxData[0]) {
